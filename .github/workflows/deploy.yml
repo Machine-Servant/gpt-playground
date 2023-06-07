@@ -20,6 +20,9 @@ jobs:
     name: ⬣ ESLint
     runs-on: ubuntu-latest
     steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
@@ -40,6 +43,9 @@ jobs:
     name: ʦ TypeScript
     runs-on: ubuntu-latest
     steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
@@ -60,6 +66,9 @@ jobs:
     name: ⚡ Vitest
     runs-on: ubuntu-latest
     steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
@@ -80,11 +89,18 @@ jobs:
     name: ⚫️ Cypress
     runs-on: ubuntu-latest
     steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
-      - name: 🏄 Copy test env vars
-        run: cp .env.example .env
+      - name: 🔑 Make envfile
+        uses: SpicyPizza/create-envfile@v1.3
+        with:
+          envkey_SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          envkey_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          file_name: .env
 
       - name: ⎔ Setup node
         uses: actions/setup-node@v3
@@ -124,6 +140,9 @@ jobs:
     if: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && github.event_name == 'push' }}
 
     steps:
+      - name: 🛑 Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.11.0
+
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
 
