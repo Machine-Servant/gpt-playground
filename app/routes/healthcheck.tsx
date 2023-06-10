@@ -1,7 +1,7 @@
 // learn more: https://fly.io/docs/reference/configuration/#services-http_checks
 import type { LoaderArgs } from "@remix-run/node";
 
-import { prisma } from "~/database/db.server";
+import { db } from "~/database";
 
 export const loader = async ({ request }: LoaderArgs) => {
   const host =
@@ -12,7 +12,7 @@ export const loader = async ({ request }: LoaderArgs) => {
     // if we can connect to the database and make a simple query
     // and make a HEAD request to ourselves, then we're good.
     await Promise.all([
-      prisma.user.count(),
+      db.user.count(),
       fetch(url.toString(), { method: "HEAD" }).then((r) => {
         if (!r.ok) return Promise.reject(r);
       }),

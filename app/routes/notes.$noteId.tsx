@@ -1,35 +1,36 @@
 import type { ActionArgs, LoaderArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
-import {
-  Form,
-  isRouteErrorResponse,
-  useLoaderData,
-  useRouteError,
-} from "@remix-run/react";
-import invariant from "tiny-invariant";
+import { Form, useCatch, useLoaderData } from "@remix-run/react";
 
-import { requireUserId } from "~/modules/auth";
+import { commitAuthSession, requireAuthSession } from "~/modules/auth";
 import { deleteNote, getNote } from "~/modules/note";
+import { assertIsDelete, getRequiredParam } from "~/utils";
 
-export const loader = async ({ params, request }: LoaderArgs) => {
-  const userId = await requireUserId(request);
-  invariant(params.noteId, "noteId not found");
+export async function loader({ request, params }: LoaderArgs) {
+  const { userId } = await requireAuthSession(request);
 
-  const note = await getNote({ id: params.noteId, userId });
+  const id = getRequiredParam(params, "noteId");
+
+  const note = await getNote({ userId, id });
   if (!note) {
     throw new Response("Not Found", { status: 404 });
   }
   return json({ note });
-};
+}
 
-export const action = async ({ params, request }: ActionArgs) => {
-  const userId = await requireUserId(request);
-  invariant(params.noteId, "noteId not found");
+export async function action({ request, params }: ActionArgs) {
+  assertIsDelete(request);
+  const id = getRequiredParam(params, "noteId");
+  const authSession = await requireAuthSession(request);
 
-  await deleteNote({ id: params.noteId, userId });
+  await deleteNote({ userId: authSession.userId, id });
 
-  return redirect("/notes");
-};
+  return redirect("/notes", {
+    headers: {
+      "Set-Cookie": await commitAuthSession(request, { authSession }),
+    },
+  });
+}
 
 export default function NoteDetailsPage() {
   const data = useLoaderData<typeof loader>();
@@ -39,10 +40,10 @@ export default function NoteDetailsPage() {
       <h3 className="text-2xl font-bold">{data.note.title}</h3>
       <p className="py-6">{data.note.body}</p>
       <hr className="my-4" />
-      <Form method="post">
+      <Form method="delete">
         <button
           type="submit"
-          className="rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 focus:bg-blue-400"
+          className="rounded bg-blue-500  px-4 py-2 text-white hover:bg-blue-600 focus:bg-blue-400"
         >
           Delete
         </button>
@@ -51,20 +52,16 @@ export default function NoteDetailsPage() {
   );
 }
 
-export function ErrorBoundary() {
-  const error = useRouteError();
+export function ErrorBoundary({ error }: { error: Error }) {
+  return <div>An unexpected error occurred: {error.message}</div>;
+}
 
-  if (error instanceof Error) {
-    return <div>An unexpected error occurred: {error.message}</div>;
-  }
+export function CatchBoundary() {
+  const caught = useCatch();
 
-  if (!isRouteErrorResponse(error)) {
-    return <h1>Unknown Error</h1>;
-  }
-
-  if (error.status === 404) {
+  if (caught.status === 404) {
     return <div>Note not found</div>;
   }
 
-  return <div>An unexpected error occurred: {error.statusText}</div>;
+  throw new Error(`Unexpected caught response with status: ${caught.status}`);
 }

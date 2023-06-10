@@ -62,4 +62,4 @@ function getClient() {
   return client;
 }
 
-export { prisma };
+export { prisma as db };

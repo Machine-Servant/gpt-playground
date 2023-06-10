@@ -1,8 +1,15 @@
 import type { ActionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 
-import { logout } from "~/modules/auth";
+import { destroyAuthSession } from "~/modules/auth";
+import { assertIsPost } from "~/utils";
 
-export const action = async ({ request }: ActionArgs) => logout(request);
+export async function action({ request }: ActionArgs) {
+  assertIsPost(request);
 
-export const loader = async () => redirect("/");
+  return destroyAuthSession(request);
+}
+
+export async function loader() {
+  return redirect("/");
+}

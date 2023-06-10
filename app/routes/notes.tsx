@@ -1,20 +1,23 @@
 import type { LoaderArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, Link, NavLink, Outlet, useLoaderData } from "@remix-run/react";
-
-import { requireUserId } from "~/modules/auth";
-import { getNoteListItems } from "~/modules/note";
-import { useUser } from "~/utils";
+import { requireAuthSession } from "~/modules/auth";
+import { getNotes } from "~/modules/note";
+import { notFound } from "~/utils";
 
 export const loader = async ({ request }: LoaderArgs) => {
-  const userId = await requireUserId(request);
-  const noteListItems = await getNoteListItems({ userId });
-  return json({ noteListItems });
+  const { userId, email } = await requireAuthSession(request);
+  const notes = await getNotes({ userId });
+
+  if (!notes) {
+    notFound(`No user with id ${userId}`);
+  }
+
+  return json({ notes, email });
 };
 
 export default function NotesPage() {
   const data = useLoaderData<typeof loader>();
-  const user = useUser();
 
   return (
     <div className="flex h-full min-h-screen flex-col">
@@ -22,11 +25,12 @@ export default function NotesPage() {
         <h1 className="text-3xl font-bold">
           <Link to=".">Notes</Link>
         </h1>
-        <p>{user.email}</p>
+        <p>{data.email}</p>
         <Form action="/logout" method="post">
           <button
             type="submit"
             className="rounded bg-slate-600 px-4 py-2 text-blue-100 hover:bg-blue-500 active:bg-blue-600"
+            data-test-id="logout"
           >
             Logout
           </button>
@@ -41,11 +45,11 @@ export default function NotesPage() {
 
           <hr />
 
-          {data.noteListItems.length === 0 ? (
+          {data.notes?.length === 0 ? (
             <p className="p-4">No notes yet</p>
           ) : (
             <ol>
-              {data.noteListItems.map((note) => (
+              {data.notes.map((note) => (
                 <li key={note.id}>
                   <NavLink
                     className={({ isActive }) =>
