@@ -1,162 +1,158 @@
 import type { ActionArgs, LoaderArgs, V2_MetaFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
-import { Form, Link, useActionData, useSearchParams } from "@remix-run/react";
-import { useEffect, useRef } from "react";
+import { Form, Link, useSearchParams, useTransition } from "@remix-run/react";
+import { parseFormAny, useZorm } from "react-zorm";
+import { z } from "zod";
 
-import { createUserSession, getUserId } from "~/modules/auth";
-import { verifyLogin } from "~/modules/user";
-import { safeRedirect, validateEmail } from "~/utils";
+import {
+  ContinueWithEmailForm,
+  createAuthSession,
+  getAuthSession,
+  signInWithEmail,
+} from "~/modules/auth";
+import { assertIsPost, isFormProcessing } from "~/utils";
 
-export const loader = async ({ request }: LoaderArgs) => {
-  const userId = await getUserId(request);
-  if (userId) return redirect("/");
-  return json({});
-};
+export async function loader({ request }: LoaderArgs) {
+  const authSession = await getAuthSession(request);
 
-export const action = async ({ request }: ActionArgs) => {
+  if (authSession) return redirect("/notes");
+
+  return json({ title: "Login" });
+}
+
+const LoginFormSchema = z.object({
+  email: z
+    .string()
+    .email("invalid-email")
+    .transform((email) => email.toLowerCase()),
+  password: z.string().min(8, "password-too-short"),
+  redirectTo: z.string().optional(),
+});
+
+export async function action({ request }: ActionArgs) {
+  assertIsPost(request);
   const formData = await request.formData();
-  const email = formData.get("email");
-  const password = formData.get("password");
-  const redirectTo = safeRedirect(formData.get("redirectTo"), "/");
-  const remember = formData.get("remember");
+  const result = await LoginFormSchema.safeParseAsync(parseFormAny(formData));
 
-  if (!validateEmail(email)) {
+  if (!result.success) {
     return json(
-      { errors: { email: "Email is invalid", password: null } },
+      {
+        errors: result.error,
+      },
       { status: 400 }
     );
   }
 
-  if (typeof password !== "string" || password.length === 0) {
+  const { email, password, redirectTo } = result.data;
+
+  const authSession = await signInWithEmail(email, password);
+
+  if (!authSession) {
     return json(
-      { errors: { email: null, password: "Password is required" } },
+      { errors: { email: "invalid-email-password", password: null } },
       { status: 400 }
     );
   }
 
-  if (password.length < 8) {
-    return json(
-      { errors: { email: null, password: "Password is too short" } },
-      { status: 400 }
-    );
-  }
-
-  const user = await verifyLogin(email, password);
-
-  if (!user) {
-    return json(
-      { errors: { email: "Invalid email or password", password: null } },
-      { status: 400 }
-    );
-  }
-
-  return createUserSession({
-    redirectTo,
-    remember: remember === "on" ? true : false,
+  return createAuthSession({
     request,
-    userId: user.id,
+    authSession,
+    redirectTo: redirectTo || "/notes",
   });
-};
+}
 
-export const meta: V2_MetaFunction = () => [{ title: "Login" }];
+export const meta: V2_MetaFunction = ({ data }) => [
+  {
+    title: data.title,
+  },
+];
 
 export default function LoginPage() {
+  const zo = useZorm("NewQuestionWizardScreen", LoginFormSchema);
   const [searchParams] = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") || "/notes";
-  const actionData = useActionData<typeof action>();
-  const emailRef = useRef<HTMLInputElement>(null);
-  const passwordRef = useRef<HTMLInputElement>(null);
+  const redirectTo = searchParams.get("redirectTo") ?? undefined;
 
-  useEffect(() => {
-    if (actionData?.errors?.email) {
-      emailRef.current?.focus();
-    } else if (actionData?.errors?.password) {
-      passwordRef.current?.focus();
-    }
-  }, [actionData]);
+  const transition = useTransition();
+  const disabled = isFormProcessing(transition.state);
 
   return (
     <div className="flex min-h-full flex-col justify-center">
       <div className="mx-auto w-full max-w-md px-8">
-        <Form method="post" className="space-y-6">
+        <Form ref={zo.ref} method="post" className="space-y-6" replace>
           <div>
             <label
-              htmlFor="email"
+              htmlFor={zo.fields.email()}
               className="block text-sm font-medium text-gray-700"
             >
-              Email address
+              Email
             </label>
+
             <div className="mt-1">
               <input
-                ref={emailRef}
-                id="email"
+                data-test-id="email"
                 required
                 autoFocus={true}
-                name="email"
+                name={zo.fields.email()}
                 type="email"
                 autoComplete="email"
-                aria-invalid={actionData?.errors?.email ? true : undefined}
-                aria-describedby="email-error"
                 className="w-full rounded border border-gray-500 px-2 py-1 text-lg"
+                disabled={disabled}
               />
-              {actionData?.errors?.email ? (
+              {zo.errors.email()?.message && (
                 <div className="pt-1 text-red-700" id="email-error">
-                  {actionData.errors.email}
+                  {zo.errors.email()?.message}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
 
           <div>
             <label
-              htmlFor="password"
+              htmlFor={zo.fields.password()}
               className="block text-sm font-medium text-gray-700"
             >
               Password
             </label>
             <div className="mt-1">
               <input
-                id="password"
-                ref={passwordRef}
-                name="password"
+                data-test-id="password"
+                name={zo.fields.password()}
                 type="password"
-                autoComplete="current-password"
-                aria-invalid={actionData?.errors?.password ? true : undefined}
-                aria-describedby="password-error"
+                autoComplete="new-password"
                 className="w-full rounded border border-gray-500 px-2 py-1 text-lg"
+                disabled={disabled}
               />
-              {actionData?.errors?.password ? (
+              {zo.errors.password()?.message && (
                 <div className="pt-1 text-red-700" id="password-error">
-                  {actionData.errors.password}
+                  {zo.errors.password()?.message}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
 
-          <input type="hidden" name="redirectTo" value={redirectTo} />
+          <input
+            type="hidden"
+            name={zo.fields.redirectTo()}
+            value={redirectTo}
+          />
           <button
+            data-test-id="login"
             type="submit"
             className="w-full rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 focus:bg-blue-400"
+            disabled={disabled}
           >
             Log in
           </button>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember"
-                name="remember"
-                type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <label
-                htmlFor="remember"
-                className="ml-2 block text-sm text-gray-900"
-              >
-                Remember me
-              </label>
-            </div>
+          <div className="flex items-center justify-center">
             <div className="text-center text-sm text-gray-500">
-              Don't have an account?{" "}
+              <Link className="text-blue-500 underline" to="/forgot-password">
+                Forgot your password?
+              </Link>
+            </div>
+          </div>
+          <div className="flex items-center justify-center">
+            <div className="text-center text-sm text-gray-500">
+              Don't have an account?
               <Link
                 className="text-blue-500 underline"
                 to={{
@@ -169,6 +165,21 @@ export default function LoginPage() {
             </div>
           </div>
         </Form>
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-white px-2 text-gray-500">
+                Or continue with
+              </span>
+            </div>
+          </div>
+          <div className="mt-6">
+            <ContinueWithEmailForm />
+          </div>
+        </div>
       </div>
     </div>
   );

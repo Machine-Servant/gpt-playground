@@ -6,7 +6,9 @@
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime";
 import { installGlobals } from "@remix-run/node";
 
-import { prisma } from "~/database/db.server";
+import { db } from "~/database";
+import { deleteAuthAccount } from "~/modules/auth";
+import { getUserByEmail } from "~/modules/user";
 
 installGlobals();
 
@@ -18,8 +20,10 @@ async function deleteUser(email: string) {
     throw new Error("All test emails must end in @example.com");
   }
 
+  const user = await getUserByEmail(email);
+
   try {
-    await prisma.user.delete({ where: { email } });
+    await db.user.delete({ where: { email } });
   } catch (error) {
     if (
       error instanceof PrismaClientKnownRequestError &&
@@ -29,9 +33,9 @@ async function deleteUser(email: string) {
     } else {
       throw error;
     }
-  } finally {
-    await prisma.$disconnect();
   }
+
+  await deleteAuthAccount(user?.id!);
 }
 
 deleteUser(process.argv[2]);

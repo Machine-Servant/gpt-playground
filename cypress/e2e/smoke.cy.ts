@@ -7,21 +7,24 @@ describe("smoke tests", () => {
 
   it("should allow you to register and login", () => {
     const loginForm = {
-      email: `${faker.internet.userName()}@example.com`,
+      email: faker.internet
+        .email(undefined, undefined, "example.com")
+        .toLowerCase(),
       password: faker.internet.password(),
     };
     cy.then(() => ({ email: loginForm.email })).as("user");
 
-    cy.visitAndCheck("/");
-    cy.findByRole("link", { name: /sign up/i }).click();
+    cy.visit("/");
+    cy.findByTestId("join").click();
 
-    cy.findByRole("textbox", { name: /email/i }).type(loginForm.email);
-    cy.findByLabelText(/password/i).type(loginForm.password);
-    cy.findByRole("button", { name: /create account/i }).click();
+    cy.findByTestId("email").type(loginForm.email);
+    cy.findByTestId("password").type(loginForm.password);
+    cy.findByTestId("create-account").click();
 
-    cy.findByRole("link", { name: /notes/i }).click();
-    cy.findByRole("button", { name: /logout/i }).click();
-    cy.findByRole("link", { name: /log in/i });
+    cy.findByText("No notes yet");
+
+    cy.findByTestId("logout").click();
+    cy.findByTestId("login");
   });
 
   it("should allow you to make a note", () => {
@@ -29,10 +32,22 @@ describe("smoke tests", () => {
       title: faker.lorem.words(1),
       body: faker.lorem.sentences(1),
     };
-    cy.login();
-    cy.visitAndCheck("/");
+    const credentials = {
+      email: faker.internet
+        .email(undefined, undefined, "example.com")
+        .toLowerCase(),
+      password: faker.internet.password(),
+    };
 
-    cy.findByRole("link", { name: /notes/i }).click();
+    cy.log("Create account with", credentials);
+    cy.createAccount(credentials);
+    cy.visit("/");
+    cy.findByTestId("login").click();
+
+    cy.findByTestId("email").type(credentials.email);
+    cy.findByTestId("password").type(credentials.password);
+    cy.findByTestId("login").click();
+
     cy.findByText("No notes yet");
 
     cy.findByRole("link", { name: /\+ new note/i }).click();
@@ -44,5 +59,7 @@ describe("smoke tests", () => {
     cy.findByRole("button", { name: /delete/i }).click();
 
     cy.findByText("No notes yet");
+    cy.findByTestId("logout").click();
+    cy.findByTestId("login");
   });
 });

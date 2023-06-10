@@ -5,44 +5,38 @@
 // as that new user.
 
 import { installGlobals } from "@remix-run/node";
-import { parse } from "cookie";
 
-import { createUserSession } from "~/modules/auth";
-import { createUser } from "~/modules/user";
+import { db } from "~/database";
+import { createEmailAuthAccount } from "~/modules/auth";
 
 installGlobals();
 
-async function createAndLogin(email: string) {
-  if (!email) {
-    throw new Error("email required for login");
+async function createAccount(email: string, password: string) {
+  if (!email || !password) {
+    throw new Error("email and password required to create account");
   }
   if (!email.endsWith("@example.com")) {
     throw new Error("All test emails must end in @example.com");
   }
 
-  const user = await createUser(email, "myreallystrongpassword");
+  const authAccount = await createEmailAuthAccount(email, password);
 
-  const response = await createUserSession({
-    request: new Request("test://test"),
-    userId: user.id,
-    remember: false,
-    redirectTo: "/",
+  if (!authAccount) {
+    throw new Error("Failed to create user account for cypress");
+  }
+
+  const newUser = await db.user.create({
+    data: {
+      email: email.toLowerCase(),
+      id: authAccount.id,
+    },
   });
 
-  const cookieValue = response.headers.get("Set-Cookie");
-  if (!cookieValue) {
-    throw new Error("Cookie missing from createUserSession response");
+  if (!newUser) {
+    throw new Error("Failed to create user database entry");
   }
-  const parsedCookie = parse(cookieValue);
-  // we log it like this so our cypress command can parse it out and set it as
-  // the cookie value.
-  console.log(
-    `
-<cookie>
-  ${parsedCookie.__session}
-</cookie>
-  `.trim()
-  );
+
+  return { email, password };
 }
 
-createAndLogin(process.argv[2]);
+createAccount(process.argv[2], process.argv[3]);

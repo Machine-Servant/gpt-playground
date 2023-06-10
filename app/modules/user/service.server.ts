@@ -1,62 +1,71 @@
-import type { Password, User } from "@prisma/client";
-import bcrypt from "bcryptjs";
-
-import { prisma } from "~/database/db.server";
-
-export type { User } from "@prisma/client";
-
-export async function getUserById(id: User["id"]) {
-  return prisma.user.findUnique({ where: { id } });
-}
+import type { User } from "@prisma/client";
+import { db } from "~/database";
+import type { AuthSession } from "../auth";
+import {
+  createEmailAuthAccount,
+  deleteAuthAccount,
+  signInWithEmail,
+} from "../auth/service.server";
 
 export async function getUserByEmail(email: User["email"]) {
-  return prisma.user.findUnique({ where: { email } });
+  return db.user.findUnique({ where: { email: email.toLowerCase() } });
 }
 
-export async function createUser(email: User["email"], password: string) {
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  return prisma.user.create({
-    data: {
-      email,
-      password: {
-        create: {
-          hash: hashedPassword,
-        },
+async function createUser({
+  email,
+  userId,
+}: Pick<AuthSession, "userId" | "email">) {
+  return db.user
+    .create({
+      data: {
+        email: email.toLowerCase(),
+        id: userId,
       },
-    },
-  });
+    })
+    .then((user) => user)
+    .catch(() => null);
 }
 
-export async function deleteUserByEmail(email: User["email"]) {
-  return prisma.user.delete({ where: { email } });
-}
+export async function tryCreateUser({
+  email,
+  userId,
+}: Pick<AuthSession, "userId" | "email">) {
+  const user = await createUser({ email, userId });
 
-export async function verifyLogin(
-  email: User["email"],
-  password: Password["hash"]
-) {
-  const userWithPassword = await prisma.user.findUnique({
-    where: { email },
-    include: {
-      password: true,
-    },
-  });
-
-  if (!userWithPassword || !userWithPassword.password) {
+  // The user account was created and there is a session but we are unable to
+  // store the user in the User table.
+  // We shoud delete the auth account so it can be re-created if/when this user
+  // is created again later.
+  if (!user) {
+    await deleteAuthAccount(email);
     return null;
   }
 
-  const isValid = await bcrypt.compare(
-    password,
-    userWithPassword.password.hash
-  );
+  return user;
+}
 
-  if (!isValid) {
+export async function createUserAccount(
+  email: string,
+  password: string
+): Promise<AuthSession | null> {
+  const authAccount = await createEmailAuthAccount(email, password);
+
+  // No auth account was created, No problem. Just return null
+  if (!authAccount) return null;
+
+  const authSession = await signInWithEmail(email, password);
+
+  // The auth account was created but there is no session
+  // We should delete the auth account so it can be re-created if/when this user
+  // is created again later.
+  if (!authSession) {
+    await deleteAuthAccount(authAccount.id);
     return null;
   }
 
-  const { password: _password, ...userWithoutPassword } = userWithPassword;
+  const user = await tryCreateUser(authSession);
 
-  return userWithoutPassword;
+  if (!user) return null;
+
+  return authSession;
 }

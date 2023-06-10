@@ -6,14 +6,14 @@ declare global {
       /**
        * Logs in with a random user. Yields the user and adds an alias to the user
        *
-       * @returns {typeof login}
+       * @returns {typeof createAccount}
        * @memberof Chainable
        * @example
-       *    cy.login()
+       *    cy.createAccount()
        * @example
-       *    cy.login({ email: 'whatever@example.com' })
+       *    cy.createAccount({ email: 'whatever@example.com', password: 'password' })
        */
-      login: typeof login;
+      createAccount: typeof createAccount;
 
       /**
        * Deletes the current @user
@@ -26,37 +26,23 @@ declare global {
        *    cy.cleanupUser({ email: 'whatever@example.com' })
        */
       cleanupUser: typeof cleanupUser;
-
-      /**
-       * Extends the standard visit command to wait for the page to load
-       *
-       * @returns {typeof visitAndCheck}
-       * @memberof Chainable
-       * @example
-       *    cy.visitAndCheck('/')
-       *  @example
-       *    cy.visitAndCheck('/', 500)
-       */
-      visitAndCheck: typeof visitAndCheck;
     }
   }
 }
 
-function login({
-  email = faker.internet.email(undefined, undefined, "example.com"),
+function createAccount({
+  email = faker.internet
+    .email(undefined, undefined, "example.com")
+    .toLowerCase(),
+  password = faker.internet.password(),
 }: {
   email?: string;
+  password?: string;
 } = {}) {
-  cy.then(() => ({ email })).as("user");
   cy.exec(
-    `npx ts-node --require tsconfig-paths/register ./cypress/support/create-user.ts "${email}"`
-  ).then(({ stdout }) => {
-    const cookieValue = stdout
-      .replace(/.*<cookie>(?<cookieValue>.*)<\/cookie>.*/s, "$<cookieValue>")
-      .trim();
-    cy.setCookie("__session", cookieValue);
-  });
-  return cy.get("@user");
+    `dotenv -- npx ts-node --require tsconfig-paths/register ./cypress/support/create-user.ts "${email}" "${password}"`
+  );
+  cy.then(() => ({ email, password })).as("user");
 }
 
 function cleanupUser({ email }: { email?: string } = {}) {
@@ -75,21 +61,15 @@ function cleanupUser({ email }: { email?: string } = {}) {
 
 function deleteUserByEmail(email: string) {
   cy.exec(
-    `npx ts-node --require tsconfig-paths/register ./cypress/support/delete-user.ts "${email}"`
+    `dotenv -- npx ts-node --require tsconfig-paths/register ./cypress/support/delete-user.ts "${email}"`
   );
   cy.clearCookie("__session");
 }
 
-// We're waiting a second because of this issue happen randomly
-// https://github.com/cypress-io/cypress/issues/7306
-// Also added custom types to avoid getting detached
-// https://github.com/cypress-io/cypress/issues/7306#issuecomment-1152752612
-// ===========================================================
-function visitAndCheck(url: string, waitTime: number = 1000) {
-  cy.visit(url);
-  cy.location("pathname").should("contain", url).wait(waitTime);
-}
-
-Cypress.Commands.add("login", login);
+Cypress.Commands.add("createAccount", createAccount);
 Cypress.Commands.add("cleanupUser", cleanupUser);
-Cypress.Commands.add("visitAndCheck", visitAndCheck);
+
+/*
+eslint
+  @typescript-eslint/no-namespace: "off",
+*/
